@@ -50,14 +50,7 @@ void setup() {
 void loop() {
   // Measure distance
   Serial.println(range.readRangeContinuousMillimeters());
-  if (range.timeoutOccurred()) { Serial.println(" TIMEOUT"); }
 
-  // if (measure.RangeStatus != 4) {
-  //   Serial.print("Distance (mm): "); Serial.println(measure.RangeMilliMeter);
-  // } else {
-  //   Serial.println(" out of range ");
-  // }
-  
   delay(1000);
 
   // Show data on lcd screen
