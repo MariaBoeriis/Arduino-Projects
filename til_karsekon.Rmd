@@ -1,0 +1,151 @@
+---
+title: "Den store karsekonkurrence"
+author: " Skrevet af: Anne Danielle Sørensen, Jakob Veilleux, Jonas Søvang Mogensen, Maria Boeriis, Mathilde Ransborg og Morten Engstrøm"
+date: "Udarbejdet d. 22-2-2023"
+output: 
+  html_document
+---
+  <style>
+  #TOC {
+  color: #708090;
+  font-family: Times New Roman;
+font-size: 16px;
+border-color: #708090
+  }
+
+#header {
+color: #8000000;
+  background-color: #F5F5F5;
+  opacity: 0.6;
+font-family: Times New Roman;
+font-size: 20px;
+}
+
+body {
+  color: blue;
+  font-family: Times New Roman;
+  background-color: #F5F5F5
+}
+pre{
+  color: #708090
+    background-color: #F8F8FF
+}
+
+</style>
+  
+## Projektdefinering
+I forbindelse med kurset Data Science er der blevet udarbejdet en rapport vedr. karsekonkurrencen
+
+### Basale informationer 
+```{r}
+# Gruppemedlemmer: Anne Danielle Sørensen, Jakob Veilleux, Jonas Søvang Mogensen, Maria Boeriis, Mathilde Ransborg og Morten Engstrøm
+# Studieretning: Miljovidenskab
+# Alias: De små shots 
+```
+
+## Libraries
+F?r vi kan udforske vores data skal vi have loadet de n?dvendige pakker ved brug af funktionen `library()`. Hvis pakkerne ikke er installeret kan de installeres via e.g. `install.packages("tidyverse")`. Pakken `tidyverse` inkludere alle de pakker som i har brugt p? datacamp, mens `lubridate` indeholder nemme funktioner til at manipulere dato og tid. Hvis i ikke har installeret R og Rstudio for nyligt, vil jeg anbefale at i installere de nyeste versioner.
+
+
+```{r, warning = FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+## Indl?s data
+Vi bruger funktionen `read_delim` fra tidyverse til at loade data ind. Der er mange forskellige funktioner til dette, men jeg kan godt lide `read_delim()` da den ogs? giver lidt information om det data vi har indl?st. Vores data er `tab-seperated` hvilket skrives med `\t`. Jeg foretr?kker `\t` over de fleste andre delimiters, da det er meget usandsynligt at `\t` bruges i tekstfelter (det g?r `;` ofte), eller som decimal/tusinde seperator (hvilket `,` godt kan).
+
+```{r}
+d <- read_delim("Karse.TXT",
+                delim = "\t")
+```
+
+## Se p? de r? data
+Klik p? de loadede data i environment vinduet for at se hvad der blev loadet eller brug `head()`, `tail()` eller `glimpse()`. Hvad er opsamlingsfrekvensen p? data og den samlede periode der er samlet data op over?
+  
+  ```{r}
+glimpse(d)
+```
+
+## Clean data
+F?r vi kan begynde at arbejde med dataene skal vi have det i det rigtigt format. I ovenst?ende er der flere typiske problemer der skal l?ses. Skriv noget kode til at l?se f?lgende og gemme datas?ttet i `dc` (`d clean`):
+  
+  * N?r arduinoen genstartes vil den skrive kolonnenavnene til filen igen. Bruge `fiter()` kommandoen til at fjerne alle r?kker hvor dette problem opst?r.
+* For at kunne arbejde med dato og tid effektivt, er det meget nemmere at det er 1 kolonne i stedet for to. Brug funktionen `mutate` sammen med funktionen `dmy_hms()` og `paste()` for at lave en ny kolonne `date_time` der kombinere de to felter.
+* N?r der er tekst i en kolonne l?ses hele kolonnen som tekst. Lav data-typen for kolonnerne om til numerisk ved brug af `as.numeric()` funktionen.
+* Brug `select()` funktionen til at fjerne de gamle `date` og `time` kolonner.
+
+```{r}
+dc <- d %>%
+  filter(date != "date") %>%
+  mutate(date_time = dmy_hms(paste(date, time)),
+         distance = as.numeric(distance)) %>%
+  filter(date_time > ymd_hms("2000-01-03 08:00:00")) %>%
+  filter(date_time < ymd_hms("2000-01-07 16:00:00")) %>%
+  select(-date, -time)
+```
+
+## Exploratory data analyis 1
+Nu kan dataene plottes for at lave den f?rste explorative data analyse. Brug `ggplot()` funktionen til at visualisere ?ndringen i distance over tid. 
+
+```{r}
+ggplot(dc, aes(x = date_time, y = distance, col = "orange")) +
+  geom_smooth() + 
+  labs(title = "?ndring i distancen over tid")
+```
+
+## Filter og formater data
+Fra den f?rste exploratory data analysis kan det ses at der er nogle store hop i data. I min opstilling ?ndrede jeg diverse ting og det ser ud til at der ogs? er nogle ?benlyse outliers.
+
+* Brug `filter()` til at fjerne ?benlyse outliers.
+* Brug `filter()` til at indsn?vre tidsperioden til mellem 1. april kl. 20 til 4. april kl. 16. Husk at dato og tid skal f?lge formatet i `date_time` kolonnen (brug: `ymd_hms()` funktionen).
+* Opsamling hver 10 sekund er vist lidt i overkanten. Reducer datas?ttet til at have 1 m?ling pr. minut ved at subs?tte til hver 6 observation. I skal google noget i retningen af "subset to nth row in r tidyverse".
+* Lav en ny kolonne der m?ler v?kst (growth) i stedet for distance.
+
+```{r}
+distance_t0 <- 140
+
+dcf <- dc %>% 
+  filter(row_number() %% 100 == 1) %>%
+  mutate(growth = distance_t0 - distance) %>%
+  filter(date_time > ymd_hms("2000-01-03 08:00:00")) %>%
+  filter(date_time < ymd_hms("2000-01-07 16:00:00")) %>%
+  select(-distance)
+```
+
+
+## Exploratory data analyis 2
+Nu har vi tilrettet tidsperioden og fjernet underlige ?benlyse outliers i `distance` m?linen. I princippet kunne vi gentage ovenst?ende plots for alle variable enkeltvis. At plotte mange variable med `ggplot` er dog nemt. Det kr?ver dog at dataene er i `long` format i stedet for `wide` format som de er nu.
+
+### Wide format
+```{r}
+head(dcf)
+```
+
+### Long format
+For at lavet en dataframe til `long` i stedet for wide kan bruges funktionen `pivot_longer()`. I nedenst?ende kode bliver alle de n?vnte kolonner (`cols`) samlet i en ny kolonne der hedder `variable` og deres v?rdier i kolonnen `value`.
+
+```{r}
+dcfl <- pivot_longer(data = dcf, 
+                     cols = c("growth"),
+                     names_to = "variable",
+                     values_to = "value")
+```
+
+Da `date_time` kolonnen ikke er specificeret i `cols` bliver denne som en selvst?ndig kolonne, hvis v?rdi s? bliver gentaget for hver v?rdi i kolonnen `variable`
+```{r}
+head(dcfl)
+```
+
+### Multi-panel plot
+Brug `ggplot()` og `+facet_wrap()` til at lave et plot over alle variable. Normalt ville jeg bruge et plot som dette som indledende explorative data analyse.
+
+
+```{r, echo = T}
+ggplot(dcfl, aes(x = date_time, y = value, col = "orange")) +
+  geom_smooth() +
+  facet_wrap(~variable, scales = "free_y", ncol = 1)
+```
+
+
+
