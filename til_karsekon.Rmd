@@ -59,6 +59,7 @@ library(ggplot2)
 library(dplyr)
 library(moderndive)
 library(kableExtra)
+library(tidymodels)
 ```
 
 # Indlæsning og filtrering af data
@@ -137,7 +138,6 @@ dcf <- dc %>%
 ```
 
 
-  
 
 ### Exploratory data analyis 2
 Nu har vi tilrettet tidsperioden og fjernet underlige åbenlyse outliers i `distance` målingen. I princippet kunne vi gentage ovenst?ende plots for alle variable enkeltvis. At plotte mange variable med `ggplot` er dog nemt. Det kræver dog at dataene er i `long` format i stedet for `wide` format, som de er nu.
@@ -187,7 +187,328 @@ get_regression_table(model_score_1)
 ### Sol
 ### Skygge
 
+## Machine Learning til karse 1
+```{r}
+k1 <- read_delim(file = "Karse.TXT", delim = "\t", col_types = "cc") %>%
+  filter(date != "date") %>%
+  mutate(date_time = dmy_hms(paste(date, time)),
+         date_min = round_date(date_time, unit = "5 mins"),
+         growth = (107 - as.numeric(distance)/10)) %>%
+  select(date_min, growth) %>%
+  pivot_longer(cols = c(growth)) %>%
+  group_by(date_min, name) %>%
+  summarise(mean = mean(value)) %>%
+  ungroup() %>%
+  mutate(delta_hour = as.numeric(date_min - min(date_min))/3600)
+```
+
+
+```{r, echo = F}
+mytheme <-  theme_classic() +
+  theme(panel.grid.major = element_line(color = "grey90"),
+        plot.title = element_text(face = "bold", size = 22),
+        plot.subtitle = element_text(face = "italic", size = 8, color = "grey70"),
+        plot.caption =  element_text(face = "italic", size = 8, color = "grey70"),
+        panel.background = element_rect(fill = "grey97"),
+        legend.position = "none", 
+        strip.background = element_rect(fill = "grey93", color = NA))
+
+```
+
+```{r}
+ggplot(k1, aes(x = date_min, y = mean, col = "cornflowerblue")) +
+  geom_point() +
+  facet_grid(rows = "name", scales = "free_y") +
+  mytheme +
+  theme(axis.title = element_blank())
+``` 
+
+```{r}
+k1w <- k1 %>%
+  pivot_wider(names_from = name, values_from = mean)
+
+k1w_subset <- k1w %>% 
+  filter(date_min > ymd("2000-01-04"), date_min < ymd("2000-01-05"))
+```  
+
+```{r} 
+ggplot(k1w, aes(x = date_min, y = growth, col = "coral")) +
+  geom_point() +
+  geom_smooth(data = k1w_subset, method = "lm", color = "navyblue", linewidth = 2, se = F) +
+  labs(y = "Vækst [cm]") +
+  mytheme +
+  theme(axis.title.x = element_blank()) 
 ## Libraries benyttet i rapporten
+```  
+
+```{r} 
+set.seed(42) #To ensure reproducible results if re-run
+
+k1_split <- initial_split(k1w_subset, prop = 0.70, strata = delta_hour)
+k1_training <- k1_split %>% training()
+k1_testing <- k1_split %>% testing()
+
+```
+
+```{r} 
+lm_model <- linear_reg() %>%
+  set_engine("lm") %>%
+  set_mode("regression")
+```
+
+```{r} 
+lm_fit <- lm_model %>%
+  fit(growth ~ delta_hour, data = k1_training)
+
+tidy(lm_fit)
+```
+
+```{r} 
+k1_predictions <- predict(lm_fit, new_data = k1_testing)
+
+k1_results <- k1_testing %>%
+  bind_cols(k1_predictions) %>%
+  mutate(residual = growth - .pred)
+```
+
+```{r} 
+rsq(data = k1_results, truth = growth, estimate = .pred) 
+rmse(data = k1_results, truth = growth, estimate = .pred)
+```
+
+```{r} 
+ggplot(k1_results, aes(x = growth, y = .pred)) +
+  geom_point() +
+  geom_abline(color = "coral", linetype = 2) +
+  labs(x = "Vækst [cm]", y = "Forudsagt vækst [cm]") +
+  mytheme +
+  theme(legend.position = c(0.1,0.86), 
+        legend.background = element_blank())
+
+ggplot(k1_results, aes(x=residual, col = "navyblue")) +
+  geom_histogram() +
+  labs(x = "Residualer (afvigelse fra modellen)", y = "Antal indenfor residual interval") +
+  mytheme
+```
+
+
+```{r} 
+k1_last_fit <- lm_model %>%
+  last_fit(growth ~ delta_hour, split = k1_split)
+
+k1_last_fit_predictions <- k1_last_fit %>% collect_predictions()
+k1_last_fit %>% collect_metrics()
+
+k1_last_fit$.workflow
+```
+
+## Machine Learning til karse 2
+k2 <- read_delim(file = "karse.TXT", delim = "\t", col_types = "cc") %>%
+  filter(date != "date") %>%
+  mutate(date_time = dmy_hms(paste(date, time)),
+         date_min = round_date(date_time, unit = "5 mins"),
+         temperature = as.numeric(temperature),
+         growth = (107 - as.numeric(distance))/10,
+         humidity = as.numeric(humidity),
+         %>% 
+  select(date_min, temperature, growth, humidity) %>%
+  pivot_longer(cols = c(temperature, growth, humidity)) %>%
+  group_by(date_min, name) %>%
+  summarise(mean = mean(value)) %>%
+  ungroup() %>%
+  mutate(delta_hour = as.numeric(date_min - min(date_min))/3600)
+
+```{r}
+ggplot(k2, aes(x = date_min, y = mean)) +
+  geom_point() +
+  facet_grid(rows = "name", scales = "free_y") +
+  mytheme +
+  theme(axis.title = element_blank())
+
+```
+
+```{r}
+k2w <- k2 %>%
+  pivot_wider(names_from = name, values_from = mean)
+
+k2w_subset <- k2w %>% 
+  filter(date_min > ymd("2023-03-06"), date_min < ymd("2023-03-07"))
+``` 
+```{r}
+ggplot(k2w, aes(x = date_min, y = growth)) +
+  geom_point() +
+  geom_smooth(data = k2w_subset, method = "lm", color = "red", linewidth = 2, se = F) +
+  labs(y = "Vækst [cm]") +
+  mytheme +
+  theme(axis.title.x = element_blank())
+```
+
+```{r}
+set.seed(42) #To ensure reproducible results if re-run
+
+k2_split <- initial_split(k2w_subset, prop = 0.70, strata = delta_hour)
+k2_training <- k2_split %>% training()
+k2_testing <- k2_split %>% testing()
+```
+```{r}
+lm_model <- linear_reg() %>%
+  set_engine("lm") %>%
+  set_mode("regression")
+```
+
+```{r}
+lm_fit <- lm_model %>%
+  fit(growth ~ delta_hour, data = k2_training)
+
+tidy(lm_fit)
+```
+
+```{r}
+k2_predictions <- predict(lm_fit, new_data = k2_testing)
+
+k2_results <- k2_testing %>%
+  bind_cols(k2_predictions) %>%
+  mutate(residual = growth - .pred)
+```
+
+```{r}
+rsq(data = k2_results, truth = growth, estimate = .pred)
+
+rmse(data = k2_results, truth = growth, estimate = .pred)
+```
+
+```{r}
+ggplot(k2_results, aes(x = growth, y = .pred, color = temperature)) +
+  geom_point() +
+  coord_obs_pred() +
+  scale_color_viridis_c(name = "Temperatur") +
+  geom_abline(color = "blue", linetype = 2) +
+  labs(x = "Vækst [cm]", y = "Forudsagt vækst [cm]") +
+  mytheme +
+  theme(legend.position = c(0.1,0.86), 
+        legend.background = element_blank())
+```
+
+```{r}
+ggplot(k2_results, aes(x=residual)) +
+  geom_histogram() +
+  labs(x = "Residualer (afvigelse fra modellen)", y = "Antal indenfor residual interval") +
+  mytheme
+```
+
+```{r}
+k2_last_fit <- lm_model %>%
+  last_fit(growth ~ delta_hour, split = k2_split)
+
+k2_last_fit_predictions <- k2_last_fit %>% collect_predictions()
+k2_last_fit %>% collect_metrics()
+
+k2_last_fit$.workflow
+```
+
+## Machine Learning til karse 3
+k3 <- read_delim(file = "karse.TXT", delim = "\t", col_types = "cc") %>%
+  filter(date != "date") %>%
+  mutate(date_time = dmy_hms(paste(date, time)),
+         date_min = round_date(date_time, unit = "5 mins"),
+         temperature = as.numeric(temperature),
+         growth = (107 - as.numeric(distance))/10,
+         humidity = as.numeric(humidity),
+         %>% 
+  select(date_min, temperature, growth, humidity) %>%
+  pivot_longer(cols = c(temperature, growth, humidity)) %>%
+  group_by(date_min, name) %>%
+  summarise(mean = mean(value)) %>%
+  ungroup() %>%
+  mutate(delta_hour = as.numeric(date_min - min(date_min))/3600)
+
+```{r}
+ggplot(k3, aes(x = date_min, y = mean)) +
+  geom_point() +
+  facet_grid(rows = "name", scales = "free_y") +
+  mytheme +
+  theme(axis.title = element_blank())
+
+```
+
+```{r}
+k3w <- k3 %>%
+  pivot_wider(names_from = name, values_from = mean)
+
+k3w_subset <- k3w %>% 
+  filter(date_min > ymd("2023-03-06"), date_min < ymd("2023-03-07"))
+``` 
+```{r}
+ggplot(k3w, aes(x = date_min, y = growth)) +
+  geom_point() +
+  geom_smooth(data = k3w_subset, method = "lm", color = "red", linewidth = 2, se = F) +
+  labs(y = "Vækst [cm]") +
+  mytheme +
+  theme(axis.title.x = element_blank())
+```
+
+```{r}
+set.seed(42) #To ensure reproducible results if re-run
+
+k3_split <- initial_split(k3w_subset, prop = 0.70, strata = delta_hour)
+k3_training <- k3_split %>% training()
+k3_testing <- k3_split %>% testing()
+```
+```{r}
+lm_model <- linear_reg() %>%
+  set_engine("lm") %>%
+  set_mode("regression")
+```
+
+```{r}
+lm_fit <- lm_model %>%
+  fit(growth ~ delta_hour, data = k3_training)
+
+tidy(lm_fit)
+```
+
+```{r}
+k3_predictions <- predict(lm_fit, new_data = k3_testing)
+
+k3_results <- k3_testing %>%
+  bind_cols(k2_predictions) %>%
+  mutate(residual = growth - .pred)
+```
+
+```{r}
+rsq(data = k3_results, truth = growth, estimate = .pred)
+
+rmse(data = k3_results, truth = growth, estimate = .pred)
+```
+
+```{r}
+ggplot(k3_results, aes(x = growth, y = .pred, color = temperature)) +
+  geom_point() +
+  coord_obs_pred() +
+  scale_color_viridis_c(name = "Temperatur") +
+  geom_abline(color = "blue", linetype = 2) +
+  labs(x = "Vækst [cm]", y = "Forudsagt vækst [cm]") +
+  mytheme +
+  theme(legend.position = c(0.1,0.86), 
+        legend.background = element_blank())
+```
+
+```{r}
+ggplot(k3_results, aes(x=residual)) +
+  geom_histogram() +
+  labs(x = "Residualer (afvigelse fra modellen)", y = "Antal indenfor residual interval") +
+  mytheme
+```
+
+```{r}
+k3_last_fit <- lm_model %>%
+  last_fit(growth ~ delta_hour, split = k3_split)
+
+k3_last_fit_predictions <- k3_last_fit %>% collect_predictions()
+k3_last_fit %>% collect_metrics()
+
+k3_last_fit$.workflow
+```
 
 ```{r}
 sessionInfo()
