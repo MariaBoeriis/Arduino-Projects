@@ -1,9 +1,13 @@
 ---
-title: "Den store karsekonkurrence"
-author: " Skrevet af: Anne Danielle Sørensen, Jakob Veilleux, Jonas Søvang Mogensen, Maria Boeriis, Mathilde Ransborg og Morten Engstrøm"
+title: "__Den store karsekonkurrence__"
+author: " Skrevet af: Anne Danielle Sørensen, Jakob Veilleux, Jonas Søvang Mogensen, Maria Boeriis og Mathilde Ransborg (Miljøvidenskab)"
 date: "Udarbejdet d. 22-2-2023"
 output: 
-  html_document
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    code_folding: show
 ---
   <style>
   #TOC {
@@ -32,24 +36,22 @@ pre{
 }
 
 </style>
-  
+   
 ## Projektbeskrivelse
 I forbindelse med kurset Data Science er der blevet udarbejdet en rapport vedr. karsekonkurrencen. Rapporten bygger på målinger af karsevækst fra en selvlavet opstilling. Rapporten indeholder to opstillinger, hvor vi har udført første opstilling og herefter optimeret på opstilling og kode efterfølgende til vores forsøg nr. to. Koden til at registrere målingerne af vækst er skrevet i Arduino. Nedenstående billede viser figuropstillingen. Opstillingen har været inspiration til gruppealias De Små Shots 
 
 ![karseopstilling](karseopstilling.jpg){width=50%}. 
 
-### Basale informationer 
-```{r}
+
+```{r, echo = FALSE}
 # Gruppemedlemmer: Anne Danielle Sørensen, Jakob Veilleux, Jonas Søvang Mogensen, Maria Boeriis, Mathilde Ransborg og Morten Engstrøm
 # Studieretning: Miljøvidenskab
 # Alias: De små shots 
 ```
 
-## Libraries
-Før vi kan udforske vores data skal vi have loadet de nødvendige pakker ved brug af funktionen `library()`. Pakken `tidyverse` inkluderer alle de pakker, som vi har brugt på datacamp, mens `lubridate` indeholder nemme funktioner til at manipulere dato og tid. Pakken `knitr` er god til at skabe dynamiske rapporter og kombinere kode og tekst.  
 
 
-```{r, warning = FALSE}
+```{r, message = FALSE, echo = F, warning = FALSE}
 library(tidyverse)
 library(lubridate)
 library(knitr)
@@ -59,27 +61,32 @@ library(moderndive)
 library(kableExtra)
 ```
 
-## Indlæs data
+# Indlæsning og filtrering af data
 Vi bruger funktionen `read_delim` fra tidyverse til at loade data ind. Der er mange forskellige funktioner til dette, men vi bruger `read_delim()` da den også giver lidt information om det data vi har indlæst. Vores data er `tab-seperated`, hvilket skrives med `\t`
 
-```{r}
+```{r, echo = FALSE}
 d <- read_delim("Karse.TXT",
                 delim = "\t")
 ```
 
-## Se på de rå data
-Vi bruger funktionen glimpe(d) til at visualisere en del af vores dataopsamling. Opsamlingsfrekvensen er hvert sekund og der er samlet data over 5 døgn. Dette resulterede i rigtig mange datapunkter (414827 observationer), derfor valgte vi at lave det om til næste forsøgsopstilling. Vi valgte en opsamlingsfrekvens på 10 min over xxx døgn. 
+## Forsøg 1
+I dette forsøgssetup har vi benyttet karse som vækstelement, der skal måles på. Med denne opstilling fås der måledata for vækst af karsen ud fra en afstandssensor opsat på forsøgsopstillingen. Vi bruger funktionen `my_table` til at visualisere en del af vores dataopsamling, og vi benytter `select`. Opsamlingsfrekvensen er hvert sekund og der er samlet data over 5 døgn. Dette resulterede i rigtig mange datapunkter (414827 observationer), derfor valgte vi at lave det om til næste forsøgsopstilling. Vi valgte en opsamlingsfrekvens på 10 min over omtrent 5 døgn. 
   
-```{r}
+```{r, echo = FALSE}
 max = nrow(d)
 
 my_table <- d %>% 
-  filter(row_number() %in% 1:5 | row_number() %in% (max-5):max) %>% 
-  kable("html")
+  select(-c(timer, date)) %>%
+  mutate(excessive_row_name = row_number()) %>% 
+  relocate(excessive_row_name, .before = time) %>% 
+  filter(row_number() %in% 1:5 | row_number() %in% (max-5):max)
+
+knitr::kable(my_table, align = c("l", "c", "r") )
 
 ```
 
-## Clean data
+
+### Filtrering af data
 Før vi kan begynde at arbejde med dataene skal vi have det i det rigtigt format. I ovenstående er der flere typiske problemer, der skal læses. Vi gemmer den nye data som `dc` (`d clean`). Vi filtrerer på datekolonnen. Vi bruger mutate til at kombinere date og time og disse skrives som day, month, year og hour, minute, second. For at opsummere:
   
 * Når arduinoen genstartes vil den skrive kolonnenavnene til filen igen. Vi bruger `fiter()` kommandoen til at fjerne alle rækker, hvor dette problem opstår.
@@ -87,7 +94,7 @@ Før vi kan begynde at arbejde med dataene skal vi have det i det rigtigt format
 * Når der er tekst i en kolonne læses hele kolonnen som tekst. Data-typen for kolonnerne om til numerisk ved brug af `as.numeric()` funktionen.
 * Vi bruger `select()` funktionen til at fjerne de gamle `date` og `time` kolonner.
 
-```{r}
+```{r, echo = FALSE}
 dc <- d %>%
   filter(date != "date") %>%
   mutate(date_time = dmy_hms(paste(date, time)),
@@ -99,7 +106,7 @@ dc <- d %>%
 ```
 
             
-## Exploratory data analyis 1
+### Exploratory data analyis 1
 Nu kan dataene plottes for at lave den første explorative dataanalyse. Vi bruger `ggplot()` funktionen til at visualisere ændringen i distance over tid. 
 
 ```{r, fig.align='center'}
@@ -108,7 +115,7 @@ ggplot(dc, aes(x = date_time, y = distance, col = "orange")) +
   labs(title = "Ændring i distancen over tid")
 ```
 
-## Filter og formater data
+### Filter og formater data
 Fra den første exploratory dataanalyse kan det ses, at der er nogle store hop i data og nogle åbenlyse outliers. I vores anden opstilling ændrede vi diverse ting (beskrivelse af dette).
 
 Vi har gjort følgende for at filtrere vores data
@@ -132,7 +139,7 @@ dcf <- dc %>%
 
   
 
-## Exploratory data analyis 2
+### Exploratory data analyis 2
 Nu har vi tilrettet tidsperioden og fjernet underlige åbenlyse outliers i `distance` målingen. I princippet kunne vi gentage ovenst?ende plots for alle variable enkeltvis. At plotte mange variable med `ggplot` er dog nemt. Det kræver dog at dataene er i `long` format i stedet for `wide` format, som de er nu.
 
 ### Wide format
@@ -143,7 +150,7 @@ head(dcf)
 ### Long format
 For at lavet en dataframe til `long` i stedet for wide kan bruges funktionen `pivot_longer()`. I nedenstående kode bliver alle de nævnte kolonner (`cols`) samlet i en ny kolonne, der hedder `variable` og deres værdier i kolonnen `value`.
 
-```{r}
+```{r, echo = FALSE}
 dcfl <- pivot_longer(data = dcf, 
                      cols = c("growth"),
                      names_to = "variable",
@@ -155,7 +162,7 @@ Da `date_time` kolonnen ikke er specificeret i `cols` bliver denne som en selvst
 head(dcfl)
 ```
 
-### Multi-panel plot
+### Plots over alle variable
 Vi bruger `ggplot()` og `+facet_wrap()` til at lave et plot over alle variable. 
 
 
@@ -175,6 +182,12 @@ model_score_1 = lm(value ~ timer, data = dcfl)
 model_score_1
 get_regression_table(model_score_1)
 ```
+
+## Forsøg 2 
+### Sol
+### Skygge
+
+## Libraries benyttet i rapporten
 
 ```{r}
 sessionInfo()
